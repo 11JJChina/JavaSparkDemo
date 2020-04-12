@@ -1,3 +1,11 @@
+import org.apache.hadoop.hbase.{Cell, CellUtil, HBaseConfiguration}
+import org.apache.hadoop.hbase.client.{Put, Result}
+import org.apache.hadoop.hbase.io.ImmutableBytesWritable
+import org.apache.hadoop.hbase.mapred.TableOutputFormat
+import org.apache.hadoop.hbase.mapreduce.TableInputFormat
+import org.apache.hadoop.hbase.util.Bytes
+import org.apache.hadoop.mapred.JobConf
+import org.apache.spark.rdd.{JdbcRDD, RDD}
 import org.apache.spark.{SparkConf, SparkContext}
 
 import scala.util.parsing.json.JSON
@@ -123,9 +131,17 @@ class SparkRddPractice {
 
     //25、读取24题的SequenceFile 文件并输出
     val rdd25 = sc.sequenceFile("hdfs://mycluster:8020/20200407_SequenceFile")
+
     //26、读写 objectFile 文件，把 RDD 保存为objectFile，RDD数据为Array(("a", 1),("b", 2),("c", 3))，并进行读取出来
+    val data26_1 = sc.makeRDD(Array(("a", 1), ("b", 2), ("c", 3)))
+    data26_1.saveAsObjectFile("output20200407/20200407_objectFile")
+    val data26_2 = sc.objectFile("output20200407/20200407_objectFile")
 
     //27、使用内置累加器计算Accumulator.txt文件中空行的数量
+    val data27 = sc.textFile("input20200407/Accumulator.txt")
+    var count = sc.longAccumulator("count")
+    data27.foreach { x => if (x == "") count.add(1) }
+    println(count.value)
 
     /*
     28、使用Spark广播变量
@@ -142,6 +158,12 @@ class SparkRddPractice {
     002,冯  剑,28,男
     004,郭  鹏,48,男
     */
+    val data28 = sc.textFile("input20200407/user.txt")
+    val sex = sc.broadcast(Map("0" -> "女", "1" -> "男"))
+    data28.foreach { x =>
+      var datas = x.split(",")
+      println(datas(0) + "," + datas(1) + "," + datas(2) + "," + sex.value(datas(3)))
+    }
 
     /*
     29、mysql创建一个数据库bigdata0407，在此数据库中创建一张表
@@ -156,6 +178,48 @@ class SparkRddPractice {
     数据依次是：姓名 生日 性别 省份
       请使用spark将以上数据写入mysql中，并读取出来
       */
+    val data29 = sc.textFile("input20200407/users.txt")
+    val driver = "com.mysql.jdbc.Driver"
+    val url = "jdbc:mysql://localhost:3306/bigdata0407"
+    val username = "root"
+    val password = "root"
+
+    data29.foreachPartition {
+      data =>
+        Class.forName(driver)
+        val connection = java.sql.DriverManager.getConnection(url, username, password)
+        val sql = "INSERT INTO `user` values (NULL,?,?,?,?)"
+        data.foreach {
+          tuples => {
+            val datas = tuples.split(" ")
+            val statement = connection.prepareStatement(sql)
+            statement.setString(1, datas(0))
+            statement.setString(2, datas(1))
+            statement.setString(3, datas(2))
+            statement.setString(4, datas(3))
+            statement.executeUpdate()
+            statement.close()
+          }
+        }
+        connection.close()
+    }
+
+    var sql = "select * from `user` where id between ? and ?"
+    val jdbcRDD = new JdbcRDD(sc,
+      () => {
+        Class.forName(driver)
+        java.sql.DriverManager.getConnection(url, username, password)
+      },
+      sql,
+      0,
+      44,
+      3,
+      result => {
+        println(s"id=${result.getInt(1)},username=${result.getString(2)}" +
+          s",birthday=${result.getDate(3)},sex=${result.getString(4)},address=${result.getString(5)}")
+      }
+    )
+    jdbcRDD.collect()
 
     /*
     30、在hbase中创建一个表student，有一个 message列族
@@ -166,6 +230,51 @@ class SparkRddPractice {
     依次是：姓名 班级 性别 省份，对应表中的字段依次是：name,class,sex,province
     */
 
+    val hbaseConf = HBaseConfiguration.create()
+    conf.set("hbase.zookeeper.quorum", "node01:2181,node02:2181,node03:2181")
+    conf.set(TableInputFormat.INPUT_TABLE, "student")
+    /**
+      * HBase插入数据
+      */
+    val dataRDD: RDD[String] = sc.textFile("input20200407/student.txt")
+    val putRDD: RDD[(ImmutableBytesWritable, Put)] = dataRDD.map {
+      //飞松	3	女	山东省
+      case line => {
+        val datas = line.split("\t")
+        val rowkey = Bytes.toBytes(datas(0))
+        val put = new Put(rowkey)
+        put.addColumn(Bytes.toBytes("message"), Bytes.toBytes("name"), Bytes.toBytes(datas(0)))
+        put.addColumn(Bytes.toBytes("message"), Bytes.toBytes("class"), Bytes.toBytes(datas(1)))
+        put.addColumn(Bytes.toBytes("message"), Bytes.toBytes("sex"), Bytes.toBytes(datas(2)))
+        put.addColumn(Bytes.toBytes("message"), Bytes.toBytes("province"), Bytes.toBytes(datas(3)))
+        (new ImmutableBytesWritable(rowkey), put)
+      }
+    }
+    val jobConf = new JobConf(hbaseConf)
+    //org.apache.hadoop.hbase.mapred.TableOutputFormat
+    jobConf.setOutputFormat(classOf[TableOutputFormat])
+    jobConf.set(TableOutputFormat.OUTPUT_TABLE, "student")
+    putRDD.saveAsHadoopDataset(jobConf)
+
+
+    /**
+      * HBase查询数据
+      */
+    val hbaseRDD: RDD[(ImmutableBytesWritable, Result)] = sc.newAPIHadoopRDD(hbaseConf, classOf[TableInputFormat],
+      classOf[ImmutableBytesWritable],
+      classOf[Result])
+    hbaseRDD.foreach {
+      case (rowKey, result) => {
+        val cells: Array[Cell] = result.rawCells()
+        for (cell <- cells) {
+          println(Bytes.toString(CellUtil.cloneRow(cell)) + "\t" +
+            Bytes.toString(CellUtil.cloneFamily(cell)) + "\t" +
+            Bytes.toString(CellUtil.cloneQualifier(cell)) + "\t" +
+            Bytes.toString(CellUtil.cloneValue(cell))
+          )
+        }
+      }
+    }
 
   }
 
