@@ -10,7 +10,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 
 import scala.util.parsing.json.JSON
 
-class SparkRddPractice {
+class SparkRddPractice1 {
 
   def main(args: Array[String]): Unit = {
 
