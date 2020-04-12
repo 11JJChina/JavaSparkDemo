@@ -118,10 +118,11 @@ class SparkRddPractice {
     val rdd23 = sc.textFile("input/people.json").map(JSON.parseFull)
 
     //24、保存一个 SequenceFile 文件，使用spark创建一个RDD数据为Array(("a", 1),("b", 2),("c", 3))，保存为SequenceFile格式的文件到hdfs上
-    val rdd24 = sc.makeRDD(Array(("a", 1),("b", 2),("c", 3))).saveAsSequenceFile("hdfs://mycluster:8020/20200407_SequenceFile")
-    
-    //25、读取24题的SequenceFile 文件并输出
+    val rdd24 = sc.makeRDD(Array(("a", 1), ("b", 2), ("c", 3)))
+      .saveAsSequenceFile("hdfs://mycluster:8020/20200407_SequenceFile")
 
+    //25、读取24题的SequenceFile 文件并输出
+    val rdd25 = sc.sequenceFile("hdfs://mycluster:8020/20200407_SequenceFile")
     //26、读写 objectFile 文件，把 RDD 保存为objectFile，RDD数据为Array(("a", 1),("b", 2),("c", 3))，并进行读取出来
 
     //27、使用内置累加器计算Accumulator.txt文件中空行的数量
