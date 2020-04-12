@@ -1,17 +1,7 @@
-import org.apache.hadoop.hbase.{Cell, CellUtil, HBaseConfiguration}
-import org.apache.hadoop.hbase.client.{Put, Result}
-import org.apache.hadoop.hbase.io.ImmutableBytesWritable
-import org.apache.hadoop.hbase.mapred.TableOutputFormat
-import org.apache.hadoop.hbase.mapreduce.TableInputFormat
-import org.apache.hadoop.hbase.util.Bytes
-import org.apache.hadoop.mapred.JobConf
-import org.apache.spark.rdd.{JdbcRDD, RDD}
-import org.apache.spark.{SparkConf, SparkContext}
 
-import scala.util.parsing.json.JSON
 
 class SparkRddPractice1 {
-
+/**
   def main(args: Array[String]): Unit = {
 
     val conf = new SparkConf().setAppName("SparkRddPractice").setMaster("local[*]")
@@ -278,4 +268,5 @@ class SparkRddPractice1 {
 
   }
 
+  */
 }
